@@ -44,7 +44,14 @@ _UNICODE_REPLACEMENTS = str.maketrans(
 
 # Common natural-language synonyms that LLMs sometimes substitute for the
 # canonical operator names.
+#
+# Local fork addition (branch local/tier1-universes): near-miss operator
+# names observed in real runs of this workflow, mapped to the closest
+# catalogue operator. EWM_Std/TS_MAD are approximations of TS_Std (documented
+# in docs/EXPERIMENTS.md); everything else is an unambiguous alias to an
+# existing operator. Names with no sensible catalogue target stay unmapped.
 OPERATOR_SYNONYMS = {
+    # --- upstream synonyms (unchanged) ---
     "divide": "Div", "div": "Div",
     "multiply": "Mul", "mul": "Mul", "times": "Mul",
     "add": "Add", "plus": "Add", "sum": "Add",
@@ -58,6 +65,22 @@ OPERATOR_SYNONYMS = {
     "max": "Max", "maximum": "Max",
     "min": "Min", "minimum": "Min",
     "inv": "Inv", "inverse": "Inv",
+    # --- local fork additions: observed hallucinations ---
+    "ts_volatility": "TS_Vol",      # TS_Vol exists in the catalogue (historical vol)
+    "ts_kurtosis": "TS_Kurt",
+    "ts_skewness": "TS_Skew",
+    "ts_standarddeviation": "TS_Std",
+    "ts_stddev": "TS_Std",
+    "ts_variance": "TS_Var",
+    "ts_mad": "TS_Std",            # median absolute deviation ≈ robust spread (approximation)
+    "ts_meanabsolutedeviation": "TS_Std",
+    "ts_ma": "TS_Mean",
+    "ts_simplemovingaverage": "TS_Mean",
+    "ts_sma": "TS_Mean",
+    "ewm_mean": "EMA",
+    "ema_mean": "EMA",
+    "ewm_std": "TS_Std",           # exponentially weighted std ≈ std (approximation)
+    "ewmsig": "EMA",
 }
 
 

@@ -336,13 +336,35 @@ quantitative-signal-discovery-agent/
 - [Arize Phoenix Documentation](https://arize.com/docs/phoenix)
 - [NeMo Fine-tuning Guide](https://docs.nvidia.com/nemo-framework/user-guide/latest/sft_peft/index.html) — to specialize Nemotron on your signal history
 
+## Local Fork: Experiment Results (2026-11-12)
+
+All runs: hosted Nemotron 3.5 Lightning via build.nvidia.com, CPU-only local evaluation, Windows. Full detail in `docs/EXPERIMENTS.md`.
+
+| Universe | Request | Status | |IC| | Note |
+|---|---|---|---|---|---|---|
+| bond_etfs | momentum | **accepted** | 0.0322 | First-iteration accept; reports to `signal_20261112_053559_iter1_report.md` |
+| sp500 | mean reversion | best_effort | 0.0167 | t=−6.3; nearest miss |
+| sp500 | momentum | best_effort | 0.0119 | baseline |
+| sp500 | volatility | best_effort | 0.0048 | weak |
+
+Key findings: identical `Div(TS_Return(Close, 20), TS_Std(Close, 20))` formula passed on bond ETFs and failed on mega-cap equities; every promising IC was negative-signed (inverse edge); Newey–West-adjusted reports show the bond and reversion signals remain significant (p = 0.009 / 2e-04), but cost-aware long-short spreads are negative as coded — `|IC|` acceptance is necessary, not sufficient. Operator-hallucination aliases were added in `llm_utils.OPERATOR_SYNONYMS` and `signal_report.py` adds HAC-adjusted IC, decile long-short economics, turnover cost drag and sub-period stability.
+
+New toolkit on top of upstream:
+
+```bash
+# Deep-validate any saved signal (HAC stats, cost-aware backtest, stability)
+uv run python -m signal_discovery_workflow.signal_report src/signal_discovery_workflow/output/signal_xxx.json --data-dir src/signal_discovery_workflow/data/bond_etfs
+```
+
 ## Local Fork Modifications
 
 This checkout carries additive-only changes on branch `local/tier1-universes`. Defaults are byte-identical to upstream; every new capability is opt-in.
 
 - `download_data.py`: added `--universe` presets (Nasdaq 100, Dow 30, country/sector/bond/factor ETFs) and `--tickers` for custom panels; new `download_universe_data()`; `download_sp500_data()` retained as a backwards-compatible wrapper.
 - `signal_evaluator.py`: `load_stock_data()` accepts an optional `data_dir` and honors the `SIGNAL_DATA_DIR` env var (default: upstream `data/sp500/`).
-- `.gitignore`: downloaded CSVs ignored for all universes.
+- `llm_utils.py`: `OPERATOR_SYNONYMS` extended with near-miss hallucination aliases observed in real runs (e.g. `TS_Volatility→TS_Vol`, `TS_Kurtosis→TS_Kurt`, `EWM_Mean→EMA`). Zero exact matches changed.
+- `signal_report.py` (new): accuracy/backtest report for saved signals — daily Rank IC series, Newey-West HAC t/p, decile long-short spread with turnover and cost drag, sub-period stability, max drawdown. Pure offline computation; no workflow changes.
+- `.gitignore`: downloaded CSVs and `output/` artifacts ignored for all universes.
 - No changes to agents, prompts, operator catalogue, Rank IC math, thresholds, YAML configs, or NAT registration.
 
 ## License
