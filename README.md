@@ -88,6 +88,8 @@ Full upstream walkthrough (notebooks, CLI, Brev deployment) follows below under 
 
 This work stands entirely on NVIDIA's reference example. Credit where it is due — none of this works without their architecture:
 
+For the full build log, dead ends included, see **[docs/walkthrough.md](docs/walkthrough.md)**.
+
 - **NVIDIA AI Blueprints** — [quantitative-signal-discovery-agent](https://github.com/NVIDIA-AI-Blueprints/quantitative-signal-discovery-agent) blueprint (Apache-2.0): the closed-loop Signal → Code → Evaluation architecture, operator catalogue, prompt strategy, data pipeline and backtesting engine
 - **NVIDIA NeMo Agent Toolkit** — multi-agent orchestration and observability framework
 - **NVIDIA Nemotron 3.5 Lightning** — open reasoning model (hosted NIM) powering all three agents via build.nvidia.com
