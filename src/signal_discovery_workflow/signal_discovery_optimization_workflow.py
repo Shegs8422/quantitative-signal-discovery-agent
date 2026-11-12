@@ -246,7 +246,7 @@ class SignalOptimizerConfig(FunctionBaseConfig, name="signal_optimizer"):
     num_signals: int = Field(default=5, description="Signals per iteration")
     forward_periods: int = Field(default=5, description="Forward return periods")
     save_results: bool = Field(default=True, description="Save results to disk")
-    # Local fork, opt-in (branch local/tier1-universes). Defaults preserve upstream behavior.
+    # Local fork, opt-in (branch feat/tier1-universes-assurance). Defaults preserve upstream behavior.
     require_hac_pvalue: bool = Field(
         default=False,
         description="Also require Newey-West (HAC) p-value <= hac_pvalue_threshold for acceptance.",

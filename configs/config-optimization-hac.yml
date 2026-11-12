@@ -1,4 +1,4 @@
-# Local fork config (branch local/tier1-universes): same workflow as config-optimization.yml,
+# Local fork config (branch feat/tier1-universes-assurance): same workflow as config-optimization.yml,
 # with opt-in stricter acceptance:
 #   - require_hac_pvalue: true   → Newey-West (HAC, lag = forward_periods) p must be <= threshold
 #   - cost_bps: 10               → every result is annotated with avg turnover / net long-short

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
-# Local-fork test suite (branch local/tier1-universes).
+# Local-fork test suite (branch feat/tier1-universes-assurance).
 
 """Tests for the local fork extensions: aliases, HAC stats, direction reporting, report tooling."""
 

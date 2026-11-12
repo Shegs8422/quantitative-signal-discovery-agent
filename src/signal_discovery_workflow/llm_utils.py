@@ -45,7 +45,7 @@ _UNICODE_REPLACEMENTS = str.maketrans(
 # Common natural-language synonyms that LLMs sometimes substitute for the
 # canonical operator names.
 #
-# Local fork addition (branch local/tier1-universes): near-miss operator
+# Local fork addition (branch feat/tier1-universes-assurance): near-miss operator
 # names observed in real runs of this workflow, mapped to the closest
 # catalogue operator. EWM_Std/TS_MAD are approximations of TS_Std (documented
 # in docs/EXPERIMENTS.md); everything else is an unambiguous alias to an

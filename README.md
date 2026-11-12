@@ -374,7 +374,7 @@ uv run nat run --config_file configs/config-optimization-hac.yml --input "moment
 
 ## Local Fork Modifications
 
-This checkout carries additive-only changes on branch `local/tier1-universes`. Defaults are byte-identical to upstream; every new capability is opt-in.
+This checkout carries additive-only changes on branch `feat/tier1-universes-assurance`. Defaults are byte-identical to upstream; every new capability is opt-in.
 
 - `download_data.py`: added `--universe` presets (Nasdaq 100, Dow 30, country/sector/bond/global-bond/factor ETFs) and `--tickers` for custom panels; new `download_universe_data()`; `download_fx_pairs()` + `--download-fx`; `download_sp500_data()` retained as a backwards-compatible wrapper.
 - `signal_evaluator.py`: `load_stock_data()` accepts an optional `data_dir` and honors the `SIGNAL_DATA_DIR` env var (default: upstream `data/sp500/`); `compute_rank_ic()` now also emits `hac_t_stat`/`hac_p_value` (backwards-compatible extra keys).

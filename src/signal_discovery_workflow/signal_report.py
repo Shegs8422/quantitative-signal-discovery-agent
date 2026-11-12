@@ -7,7 +7,7 @@
 # and Product Specific Terms for AI Products before redistribution.
 
 """
-Signal accuracy report (local fork, branch local/tier1-universes).
+Signal accuracy report (local fork, branch feat/tier1-universes-assurance).
 
 Deep validation for a signal previously produced by the workflow. Adds:
 

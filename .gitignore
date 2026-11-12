@@ -13,4 +13,4 @@ src/signal_discovery_workflow/data/
 .env.local
 
 # Local documentation (not for upstream)
-docs/
+# docs/ deliberately tracked in this fork (public engineering notes)

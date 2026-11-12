@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
-# Local-fork addition (branch local/tier1-universes). Not part of the upstream example.
+# Local-fork addition (branch feat/tier1-universes-assurance). Not part of the upstream example.
 
 """
-Portfolio simulation v1 (local fork, branch local/tier1-universes).
+Portfolio simulation v1 (local fork, branch feat/tier1-universes-assurance).
 
 Turns a saved workflow signal into a tradable dollar-neutral long/short portfolio
 and produces investment-grade evidence, not just IC statistics:
