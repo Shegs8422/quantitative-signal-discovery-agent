@@ -56,3 +56,4 @@ workflow:
   require_hac_pvalue: true
   hac_pvalue_threshold: 0.05
   cost_bps: 10
+  record_trials: true

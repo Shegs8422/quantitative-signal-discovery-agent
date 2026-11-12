@@ -256,6 +256,10 @@ class SignalOptimizerConfig(FunctionBaseConfig, name="signal_optimizer"):
         default=0.0,
         description="One-way transaction cost in bps. If > 0, annotate avg_turnover/net_spread/cost_warning in results.",
     )
+    record_trials: bool = Field(
+        default=False,
+        description="Append one line per workflow run (candidates evaluated, best metrics) to output/trials.jsonl.",
+    )
 
 
 @register_function(config_type=SignalOptimizerConfig, framework_wrappers=[LLMFrameworkEnum.LANGCHAIN])
@@ -395,6 +399,26 @@ No prose, no preamble. Format:
         feedback: str | None = seed_feedback
         last_error: str | None = None
 
+        def _record_trial(mean_ic: float | None, hac_p: float | None, status: str) -> None:
+            """Append one workflow-run trial line to output/trials.jsonl (opt-in via record_trials)."""
+            if not getattr(config, "record_trials", False):
+                return
+            try:
+                OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+                n_candidates = config.num_signals * config.max_iterations
+                rec = {
+                    "ts": datetime.now().isoformat(timespec="seconds"),
+                    "request": request_text,
+                    "status": status,
+                    "candidates_evaluated": n_candidates,
+                    "mean_ic": mean_ic,
+                    "hac_p_value": hac_p,
+                }
+                with (OUTPUT_DIR / "trials.jsonl").open("a", encoding="utf-8") as f:
+                    f.write(json.dumps(rec) + "\n")
+            except OSError as e:
+                logger.warning(f"trial registry write failed: {e}")
+
         if seed_feedback:
             logger.info(f"Resuming with seed feedback ({len(seed_feedback)} chars)")
 
@@ -433,6 +457,7 @@ No prose, no preamble. Format:
 
             if is_acceptable(ic_results):
                 logger.info("Signal accepted!")
+                _record_trial(ic_results.get("mean_ic"), ic_results.get("hac_p_value"), "accepted")
                 saved_path = (
                     save_signal_results(signal_json, signal_code, ic_results, iteration)
                     if config.save_results
@@ -473,6 +498,11 @@ No prose, no preamble. Format:
             feedback = _compose_feedback(advice, best_result, best_ic)
 
         if best_result:
+            _record_trial(
+                best_result["ic_results"].get("mean_ic"),
+                best_result["ic_results"].get("hac_p_value"),
+                "best_effort",
+            )
             saved_path = (
                 save_signal_results(
                     best_result["signal_json"],
@@ -495,6 +525,7 @@ No prose, no preamble. Format:
                 last_feedback=feedback,
             )
 
+        _record_trial(None, None, "failed")
         return _format_workflow_result(
             status="failed",
             request=request_text,
