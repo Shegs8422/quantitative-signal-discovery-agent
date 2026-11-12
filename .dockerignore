@@ -1,0 +1,17 @@
+.git
+.venv
+__pycache__
+**/__pycache__
+*.egg-info
+build
+dist
+.env
+.env.*
+src/signal_discovery_workflow/data
+src/signal_discovery_workflow/output
+examples/*_report.md
+examples/*_portfolio.md
+examples/*_portfolio.csv
+docs/
+result-*.json
+*.pyc

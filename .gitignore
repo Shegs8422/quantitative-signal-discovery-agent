@@ -6,7 +6,13 @@ output/
 result*.json
 .venv/
 .vscode/
+# Downloaded data & artifacts (all universes)
 src/signal_discovery_workflow/data/
+examples/*_report.md
+examples/*_portfolio.md
+examples/*_portfolio.csv
+examples/*_robustness.md
+examples/__pycache__/
 
 # Secrets — never commit API keys.
 .env

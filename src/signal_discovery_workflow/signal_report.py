@@ -140,6 +140,31 @@ def _annualized_stats(spread: pd.Series) -> dict[str, float | None]:
 # ---------------------------------------------------------------------------
 
 
+def _deflated_sharpe(x: np.ndarray, n_trials: int) -> tuple[float, float] | None:
+    """
+    Deflated Sharpe Ratio (Bailey & López de Prado, 2014).
+
+    Accounts for (a) the selection bias from having tested many candidates and
+    (b) non-normality (skew/kurtosis) of the return series. Returns (period
+    Sharpe, DSR) where DSR is the probability the true SR exceeds zero.
+    """
+    x = x[~np.isnan(x)]
+    T = len(x)
+    if T < 30 or x.std() < 1e-12:
+        return None
+    sr = float(x.mean() / x.std())
+    skew = float(stats.skew(x))
+    kurt = float(stats.kurtosis(x, fisher=False))  # Pearson kurtosis (normal = 3)
+    euler = 0.5772156649015329
+    n = max(int(n_trials), 1)
+    sr_star = (1 - euler) * stats.norm.ppf(1 - 1.0 / n) + euler * stats.norm.ppf(1 - 1.0 / (n * math.e))
+    denom = 1 - skew * sr + (kurt - 1) / 4 * sr**2
+    if denom <= 0:
+        return None
+    dsr = float(stats.norm.cdf((sr - sr_star) * np.sqrt(T - 1) / np.sqrt(denom)))
+    return sr, dsr
+
+
 def _decile_long_short(
     signal_values: pd.DataFrame,
     forward_returns: pd.DataFrame,
@@ -470,6 +495,16 @@ def analyze(signal_json_path: str, data_dir: str | Path | None,
         if ic_hac_p is not None and ic_hac_p <= bonf_alpha
         else ("does NOT pass Bonferroni" if ic_hac_p is not None else "untestable (HAC n/a)")
     )
+    dsr_line = ""
+    if has_ls:
+        dsr = _deflated_sharpe(ls["spread"].to_numpy(), n_trials)
+        if dsr is not None:
+            sr_per_period, dsr_prob = dsr
+            dsr_line = (
+                f"- Sharpe per period (L/S spread): {_fmt2(sr_per_period, '+.4f')}\n"
+                f"- **Deflated Sharpe (Bailey–López de Prado, N={n_trials} trials): {dsr_prob:.3f}** "
+                "(probability the true SR is positive after selection; > 0.95 desirable)"
+            )
 
     # Expensive add-ons (skippable for quick checks)
     horizon_block = ""
@@ -577,6 +612,7 @@ def analyze(signal_json_path: str, data_dir: str | Path | None,
 - Trials to date (incl. this one): **{n_trials}**
 - Bonferroni alpha: 0.05 / {n_trials} = {bonf_alpha:.4g}
 - Verdict: {bonf_verdict}
+{dsr_line}
 
 ## Honest caveats
 - The workflow's IC t-stat assumes independent samples; with overlapping {periods}-day forward returns, effective information is ~{periods}× lower. Trust the HAC numbers.

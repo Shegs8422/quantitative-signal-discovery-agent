@@ -1,4 +1,106 @@
-# Quantitative Signal Discovery Agent developer example
+# Quantitative Signal Discovery Agent — Enhanced Fork
+
+[![Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE.txt) [![Python 3.11+](https://img.shields.io/badge/python-3.11--3.13-3776AB.svg)](pyproject.toml) [![Tests](https://img.shields.io/badge/tests-115%20passing-brightgreen.svg)](tests/) [![NVIDIA blueprint](https://img.shields.io/badge/fork%20of-NVIDIA%20AI%20Blueprint-76b900.svg)](https://github.com/NVIDIA-AI-Blueprints/quantitative-signal-discovery-agent)
+
+**An AI/ML engineering take on NVIDIA's reference example: an autonomous, closed-loop LLM pipeline that discovers, codes, and backtests quantitative alpha hypotheses — rebuilt with the statistical and economic honesty gates that decide whether any of it is tradable.**
+
+> Apache-2.0 fork of [NVIDIA's Quantitative Signal Discovery Agent](https://github.com/NVIDIA-AI-Blueprints/quantitative-signal-discovery-agent) — additive changes only; every new capability is opt-in and upstream defaults are unchanged.
+
+**Author:** Shegs8422 · **Base:** NVIDIA-AI-Blueprints · **Stack:** NVIDIA NeMo Agent Toolkit · NVIDIA Nemotron 3.5 Lightning (hosted NIM) · Python 3.11–3.13 · pandas/scipy · yfinance · Arize Phoenix
+
+This is **research-engineering software**: it finds statistically real structure cheaply and will also tell you, with receipts, when that structure dies on contact with costs, beta, regime dependence and portfolio construction. It is not investment advice, and nothing here is deployable capital machinery.
+
+## Three-minute architecture read
+
+```mermaid
+flowchart LR
+  D[OHLCV panels<br/>S&P 500 · bond/sector ETFs · country ETFs] --> S[Signal agent<br/>proposes hypotheses]
+  S --> C[Code agent<br/>executable formula from 66-op catalogue]
+  C --> E[Eval agent<br/>Rank IC + HAC t/p]
+  E -->|IC below threshold| A[Advisor agent<br/>targeted feedback]
+  A --> S
+  E -->|accepted| R[Accuracy report<br/>HAC · bootstrap CI · horizon ladder · regimes · beta-neutral IC · DSR]
+  R --> P[Portfolio simulator<br/>L/S construction · vol-target · costs · borrow · rebalance]
+  P --> V[Assurance verdict]
+```
+
+Three cooperating agents close the loop (generate → code → evaluate → refine); the **fork's assurance layer** sits on the exit gate: an accepted signal must then survive cost-aware portfolio economics, regime inspection, and multiple-testing correction — or be shown, honestly, to fail it.
+
+## 60-second offline demo (no API key, no network)
+
+```bash
+scripts/run_offline_demo.ps1    # Windows  (or ./scripts/run_offline_demo.sh)
+# installs, runs 115 tests, then the accuracy report and portfolio simulation
+# on a committed synthetic example (examples/demo_signal.json)
+```
+
+Same demo in [Docker](Dockerfile): `docker build -t qsda . && docker run --rm qsda`
+
+## At a glance
+
+| | |
+|---|---|
+| What it does | Loops Signal-agent → Code-agent → Eval-agent to ideate, implement and backtest cross-sectional alpha hypotheses over equity/ETF panels |
+| Why this fork | Upstream accepts on \|IC\| ≥ 0.02 with independence-assuming t-stats. This fork adds HAC inference, cost-aware evaluation, portfolio construction, FX attribution and a multiple-testing registry — and reports the uncomfortable verdicts |
+| Validation | 10 full workflow runs across S&P 500, bond ETFs, global bond ETFs, country ETFs; **3 acceptances, 0 investable after honest friction modeling** (see below) |
+| Integrity | Additive-only fork (upstream untouched); 115/115 pytest; ruff-clean; opt-in-only changes |
+
+## What this fork adds (all opt-in)
+
+- **Tier-1 data universes** — `nasdaq100`, `dow30`, `country_etfs`, `sector_etfs`, `bond_etfs`, `global_bond_etfs`, `factor_etfs` presets (+ custom `--tickers`), `$SIGNAL_DATA_DIR` switching, FX pair downloads
+- **HAC-aware acceptance** (`configs/config-optimization-hac.yml`) — Newey–West t/p gate before "accepted" suffers no more lucky candidates (it rejected a naive-p = 0.031 / HAC p = 0.203 iteration the upstream rule would have rubber-stamped)
+- **Accuracy report** (`signal_report.py`) — daily IC series, HAC t/p, block-bootstrap CI, horizon ladder (1/5/10/21/63d), signal autocorrelation, regime splits, market-beta-neutral residualized IC, Bonferroni trial registry, **Deflated Sharpe Ratio**
+- **Portfolio simulator** (`portfolio_sim.py`) — dollar-neutral long/short construction, causal vol targeting, one-way costs, borrow model, daily/weekly/monthly rebalance
+- **Robustness frontier** (`robustness.py`) — direction × cost × rebalance grid for any saved signal (frontier over single best cell)
+- **FX attribution** — re-executes saved signal code in local currency for country panels (`--local-currency`)
+- **Observability fix** — `nvidia-nat[profiler]` restores LLM-level spans + token counts in Phoenix (upstream captured CHAIN roots only)
+- **Operator-hallucination aliases** — near-miss model outputs mapped to the vetted operator catalogue
+
+## Honest results (2026-11-12 validation campaign)
+
+| Run | Universe | Status | \|IC\| | HAC p | Post-friction autopsy |
+|---|---|---|---|---|---|
+| momentum | bond_etfs | **accepted** ✅ | 0.0322 | — | −33%/yr daily, −5%/yr monthly; L/S spread ≈ 0 after 10 bps/26% turnover |
+| momentum (HAC gate) | bond_etfs | **accepted** ✅ | 0.0350 | 0.0025 | beta, not selection alpha (residualized IC ≈ 0) |
+| momentum (HAC gate) | global_bond_etfs | **accepted** ✅ | 0.0229 | 0.042 | bootstrap CI barely clears 0; portfolio −2.3%/yr |
+| momentum | sp500 | best_effort | 0.0119 | — | inverse-predictive |
+| mean reversion | sp500 | best_effort | 0.0167 | — | t = −6.3; nearest miss |
+
+**Every accepted signal fails the investability bar once costs, beta and regimes are priced in.** That is the finding: LLM agents find significant structure reliably; whether it is *deployable* is a separate, harder question this fork is built to answer. See `docs/EXPERIMENTS.md` and `docs/INVESTMENT_ASSURANCE.md` for the full autopsy and the governance checklist required before any capital consideration.
+
+## Quickstart
+
+```bash
+uv sync --locked
+.venv\Scripts\python.exe -m pip install "nvidia-nat[profiler]"   # LLM-level Phoenix spans
+uv run python -m signal_discovery_workflow.download_data --universe bond_etfs
+uv run phoenix serve                                            # http://localhost:6006
+uv run nat run --config_file configs/config-optimization-hac.yml --input "momentum signals"
+uv run python -m signal_discovery_workflow.signal_report src/signal_discovery_workflow/output/signal_xxx.json --data-dir src/signal_discovery_workflow/data/bond_etfs
+```
+
+Full upstream walkthrough (notebooks, CLI, Brev deployment) follows below under the original NVIDIA documentation.
+
+## Credits & acknowledgements
+
+This work stands entirely on NVIDIA's reference example. Credit where it is due — none of this works without their architecture:
+
+- **NVIDIA AI Blueprints** — [quantitative-signal-discovery-agent](https://github.com/NVIDIA-AI-Blueprints/quantitative-signal-discovery-agent) blueprint (Apache-2.0): the closed-loop Signal → Code → Evaluation architecture, operator catalogue, prompt strategy, data pipeline and backtesting engine
+- **NVIDIA NeMo Agent Toolkit** — multi-agent orchestration and observability framework
+- **NVIDIA Nemotron 3.5 Lightning** — open reasoning model (hosted NIM) powering all three agents via build.nvidia.com
+- **NVIDIA NIM** — hosted inference for the agent LLMs
+- **Arize Phoenix** — LLM tracing and run observability
+- **yfinance** — market data; **pandas / NumPy / SciPy** — analytics
+- Apache-2.0 license retained; NVIDIA copyright headers preserved in all modified files; modifications are additive and documented in [Local Fork Modifications](#local-fork-modifications). NVIDIA is a trademark of NVIDIA Corporation.
+
+## Honest limitations
+
+Current-constituent universes (survivorship bias), no delisted returns, no market-impact model, unhedged FX on international panels, overlapping horizons (annualized figures inflated), small panels (bond_etfs k=2 buckets), no slippage/borrow desk integration, and a 10-run multiple-testing regime that Bonferroni can only partially correct. Nothing here replaces independent model validation, out-of-sample holdout, paper trading, or a risk committee. More in `docs/INVESTMENT_ASSURANCE.md`.
+
+---
+
+# Upstream example — NVIDIA's Quantitative Signal Discovery Agent (original docs)
+
 
 An end-to-end signal discovery workflow for quantitative finance using NVIDIA NeMo Agent Toolkit. This workflow demonstrates how to leverage LLMs to automatically generate, code, and evaluate alpha signals.
 
@@ -378,8 +480,12 @@ This checkout carries additive-only changes on branch `feat/tier1-universes-assu
 
 - `download_data.py`: added `--universe` presets (Nasdaq 100, Dow 30, country/sector/bond/global-bond/factor ETFs) and `--tickers` for custom panels; new `download_universe_data()`; `download_fx_pairs()` + `--download-fx`; `download_sp500_data()` retained as a backwards-compatible wrapper.
 - `signal_evaluator.py`: `load_stock_data()` accepts an optional `data_dir` and honors the `SIGNAL_DATA_DIR` env var (default: upstream `data/sp500/`); `compute_rank_ic()` now also emits `hac_t_stat`/`hac_p_value` (backwards-compatible extra keys).
-- `signal_report.py` (new): accuracy/backtest report — daily Rank IC series, Newey-West HAC t/p, moving-block bootstrap CI, horizon ladder (1/5/10/21/63d), signal autocorrelation, regime splits (year + realized-vol tercile), market-beta-neutral residualized IC, decile long-short spread with turnover and 10 bps cost drag, sub-period stability, max drawdown, trial registry with Bonferroni annotation, optional FX attribution via `--local-currency`. Pure offline computation.
+- `signal_report.py` (new): accuracy/backtest report — daily Rank IC series, Newey-West HAC t/p, moving-block bootstrap CI, horizon ladder (1/5/10/21/63d), signal autocorrelation, regime splits (year + realized-vol tercile), market-beta-neutral residualized IC, decile long-short spread with turnover and 10 bps cost drag, sub-period stability, max drawdown, trial registry with Bonferroni annotation and **Deflated Sharpe Ratio** (Bailey–López de Prado), optional FX attribution via `--local-currency`. Pure offline computation.
 - `portfolio_sim.py` (new): strategy-grade portfolio simulation — dollar-neutral L/S construction (bucket or z-weighted), vol targeting (causal 63d), one-way cost/borrow model, daily/weekly/monthly rebalance, geometric returns, Sharpe/IR/beta/alpha/maxDD/Calmar/yearly table, CSV export. Used to autopsy the accepted bond signal (destroyed by costs at any rebalance frequency — see `docs/INVESTMENT_ASSURANCE.md`).
+- `robustness.py` (new): direction × cost × rebalance-frequency grid for any saved signal — the frontier, not the best cell.
+- `examples/` (new): committed synthetic panel + pre-built demo signal (`make_synthetic_demo.py` regenerates it deterministically, seed=42) — powers the 60-second offline demo without API keys or network.
+- `scripts/run_offline_demo.ps1` / `.sh` (new): one-command demo (doctor: install → tests → report → portfolio sim).
+- `Dockerfile`, `.dockerignore`, `.pre-commit-config.yaml` (new): containerized demo image (`docker build -t qsda .`) and pre-commit ruff hook mirroring CI.
 - `signal_discovery_optimization_workflow.py`: opt-in `require_hac_pvalue` + `hac_pvalue_threshold` (HAC gate), `cost_bps` (annotates `avg_turnover`/`net_spread`/`cost_warning`), `recommended_direction` + `direction_note` in results, opt-in `record_trials` (JSONL line per run in `output/trials.jsonl`). All default off/zero → upstream behavior preserved.
 - `configs/config-optimization-hac.yml` (new): upstream config + HAC gate + cost annotation + trial recording; separate Phoenix project `signal-discovery-workflow-hac`.
 - `llm_utils.py`: `OPERATOR_SYNONYMS` extended with near-miss hallucination aliases observed in real runs (`TS_Volatility→TS_Vol`, `EWM_Mean→EMA`…). Zero upstream matches changed; approximations flagged in docs.
