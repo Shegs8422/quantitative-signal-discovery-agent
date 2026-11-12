@@ -55,6 +55,40 @@ You can customize the date range:
 uv run python -m signal_discovery_workflow.download_data --start 2015-01-01 --end 2025-12-31
 ```
 
+#### Local fork: universe presets (Tier 1 expansion)
+
+> This subsection documents a local modification of the upstream example.
+> With no arguments, behavior is identical to upstream (S&P 500 into `data/sp500/`).
+
+The download script ships presets beyond S&P 500, all tradable panels via yfinance (all symbols with ≥10 instruments, satisfying the cross-sectional Rank IC minimum):
+
+| `--universe` | Panel | Notes |
+|---|---|---|
+| `sp500` (default) | S&P 500 constituents | Upstream behavior |
+| `nasdaq100` | Curated Nasdaq-100 snapshot | Listed snapshot; refresh periodically |
+| `dow30` | Dow Jones Industrial Average 30 | 29–30 names; noisy IC |
+| `country_etfs` | 20 single-country MSCI ETFs (EWA…EIDO) | "Indices as instruments" — a single ^index cannot yield a cross-sectional Rank IC |
+| `sector_etfs` | 10 SPDR sector ETFs | XLRE has shorter history (2015+) |
+| `bond_etfs` | 12 rates/credit/TIPS/muni ETFs | Duration & credit panel; HY/EM/muni from 2006–07 |
+| `factor_etfs` | 10 factor ETFs (MTUM, QUAL, …) | Style-premium panel |
+
+Custom universes are supported with a comma-separated ticker list (writes to `data/custom/` by default):
+
+```bash
+uv run python -m signal_discovery_workflow.download_data --tickers "AAPL,MSFT,NVDA,AMZN"
+```
+
+Point the workflow at a downloaded universe via the `SIGNAL_DATA_DIR` environment variable (defaults to `data/sp500/` when unset):
+
+```powershell
+# PowerShell
+$env:SIGNAL_DATA_DIR = "src/signal_discovery_workflow/data/nasdaq100"
+uv run nat run --config_file configs/config-optimization.yml --input "momentum signals"
+
+# bash
+SIGNAL_DATA_DIR=src/signal_discovery_workflow/data/nasdaq100 uv run nat run --config_file configs/config-optimization.yml --input "momentum signals"
+```
+
 > **Disclaimer:** Each user is responsible for checking the content of datasets and the applicable licenses and determining if suitable for the intended use.
 
 ## Deployment Options
@@ -301,6 +335,15 @@ quantitative-signal-discovery-agent/
 - [NeMo Agent Toolkit Documentation](https://docs.nvidia.com/nemo-agent-toolkit/)
 - [Arize Phoenix Documentation](https://arize.com/docs/phoenix)
 - [NeMo Fine-tuning Guide](https://docs.nvidia.com/nemo-framework/user-guide/latest/sft_peft/index.html) — to specialize Nemotron on your signal history
+
+## Local Fork Modifications
+
+This checkout carries additive-only changes on branch `local/tier1-universes`. Defaults are byte-identical to upstream; every new capability is opt-in.
+
+- `download_data.py`: added `--universe` presets (Nasdaq 100, Dow 30, country/sector/bond/factor ETFs) and `--tickers` for custom panels; new `download_universe_data()`; `download_sp500_data()` retained as a backwards-compatible wrapper.
+- `signal_evaluator.py`: `load_stock_data()` accepts an optional `data_dir` and honors the `SIGNAL_DATA_DIR` env var (default: upstream `data/sp500/`).
+- `.gitignore`: downloaded CSVs ignored for all universes.
+- No changes to agents, prompts, operator catalogue, Rank IC math, thresholds, YAML configs, or NAT registration.
 
 ## License
 

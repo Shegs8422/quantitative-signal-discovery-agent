@@ -23,6 +23,7 @@ stock returns — a standard quant-research signal-quality metric.
 import inspect
 import json
 import logging
+import os
 import re
 import traceback
 import warnings
@@ -89,13 +90,19 @@ def get_operator_arities() -> dict[str, tuple[int, int]]:
     return arities
 
 
-def load_stock_data() -> dict[str, pd.DataFrame]:
-    """Load all available stock price-volume data from CSV files."""
+def load_stock_data(data_dir: str | Path | None = None) -> dict[str, pd.DataFrame]:
+    """Load all available stock price-volume data from CSV files.
+
+    Resolution order: explicit ``data_dir`` argument > ``SIGNAL_DATA_DIR``
+    environment variable > the default ``data/sp500/`` directory. The default
+    is unchanged from upstream, so behavior is identical unless you opt in.
+    """
+    base_dir = Path(data_dir) if data_dir is not None else Path(os.environ.get("SIGNAL_DATA_DIR") or DATA_DIR)
     data = {}
     data_files = ["Open", "Close", "High", "Low", "Volume"]
 
     for field in data_files:
-        file_path = DATA_DIR / f"{field}.csv"
+        file_path = base_dir / f"{field}.csv"
         if file_path.exists():
             try:
                 df = pd.read_csv(file_path, index_col=0, parse_dates=True)
