@@ -342,11 +342,15 @@ All runs: hosted Nemotron 3.5 Lightning via build.nvidia.com, CPU-only local eva
 
 | Universe | Config | Request | Status | mean IC | HAC p |
 |---|---|---|---|---|---|
+| global_bond_etfs | `config-optimization-hac.yml` | momentum | **accepted** (iter 2) | +0.0229 | 0.042 |
+| country_etfs | `config-optimization-hac.yml` | momentum | best_effort | −0.0166 | 0.036 |
 | bond_etfs | upstream | momentum | **accepted** | −0.0322 | — |
 | bond_etfs | `config-optimization-hac.yml` | momentum | **accepted** (iter 2) | −0.0350 | **0.0025** |
 | sp500 | upstream | mean reversion | best_effort | −0.0167 | — |
 | sp500 | upstream | momentum | best_effort | −0.0119 | — |
 | sp500 | upstream | volatility | best_effort | −0.0048 | — |
+
+The global_bond_etfs acceptance (28-name panel) is instructive: positive-signed IC, t = 3.7, bootstrap CI excluding zero — and still destroyed by costs/portfolio construction (−2.3%/yr, max DD −36%, net spread ≈ 0, Bonferroni fails across 6 trials, sub-period decay +0.033 → +0.012). Every acceptance this session fails the investment-assurance bar.
 
 The HAC run also caught iteration 1 (naive p = 0.031, HAC p = 0.203) that the upstream rule would have accepted — the stricter gate rejected it and accepted iteration 2 instead. Direction reporting and cost annotation both fire correctly on the result JSON (`recommended_direction: -1`, `cost_warning` at 52% turnover).
 
