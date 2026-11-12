@@ -34,7 +34,14 @@ scripts/run_offline_demo.ps1    # Windows  (or ./scripts/run_offline_demo.sh)
 # on a committed synthetic example (examples/demo_signal.json)
 ```
 
+![uv run pytest tests/ — 115 passed in ~8 seconds](docs/assets/demo-pytest-collection.gif)
+
+Then the accuracy report renders — HAC p ≈ 0.014 passes Newey–West; Bonferroni says no; Deflated Sharpe says **zero**:
+
+![demo signal accuracy report — HAC vs Bonferroni vs Deflated Sharpe](docs/assets/demo-accuracy-report.gif)
+
 Same demo in [Docker](Dockerfile): `docker build -t qsda . && docker run --rm qsda`
+Full walkthrough: [docs/walkthrough.md](docs/walkthrough.md)
 
 ## At a glance
 
