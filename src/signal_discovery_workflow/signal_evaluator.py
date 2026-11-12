@@ -23,6 +23,7 @@ stock returns — a standard quant-research signal-quality metric.
 import inspect
 import json
 import logging
+import math
 import os
 import re
 import traceback
@@ -131,9 +132,33 @@ def compute_forward_returns(close: pd.DataFrame, periods: int = 5) -> pd.DataFra
     return forward_returns
 
 
+def _newey_west(x: np.ndarray, lag: int) -> tuple[float, float, float]:
+    """Newey-West HAC (mean, t_stat, p_value) for the IC series."""
+    from scipy import stats as _stats
+
+    x = np.asarray(x, dtype=float)
+    x = x[~np.isnan(x)]
+    n = len(x)
+    mean = float(np.mean(x))
+    if n <= lag + 2:
+        return mean, 0.0, 1.0
+    centered = x - mean
+    gamma0 = float(np.mean(centered**2))
+    var = gamma0
+    for i in range(1, lag + 1):
+        gamma_i = float(np.mean(centered[i:] * centered[:-i]))
+        var += 2.0 * (1.0 - i / (lag + 1)) * gamma_i
+    if var <= 0:
+        return mean, 0.0, 1.0
+    t_stat = mean / math.sqrt(var / n)
+    p_value = float(2.0 * (1.0 - _stats.norm.cdf(abs(t_stat))))
+    return mean, float(t_stat), p_value
+
+
 def compute_rank_ic(
     signal_values: pd.DataFrame,
     forward_returns: pd.DataFrame,
+    hac_lag: int = 5,
 ) -> dict[str, Any]:
     """
     Compute rank IC (Information Coefficient) between signal values and forward returns.
@@ -144,9 +169,12 @@ def compute_rank_ic(
     Args:
         signal_values: DataFrame of signal values (rows=dates, cols=stocks).
         forward_returns: DataFrame of forward returns (rows=dates, cols=stocks).
+        hac_lag: Lag for the Newey-West (HAC) autocorrelation correction
+            (defaults to 5). The naive t/p assume independent periods and are
+            kept for backwards compatibility; prefer ``hac_t_stat``/``hac_p_value``.
 
     Returns:
-        Dictionary containing IC statistics.
+        Dictionary containing IC statistics (including HAC t/p).
     """
     common_dates = signal_values.index.intersection(forward_returns.index)
     common_stocks = signal_values.columns.intersection(forward_returns.columns)
@@ -217,6 +245,7 @@ def compute_rank_ic(
             if t_stat is not None
             else None
         )
+        _, hac_t_stat, hac_p_value = _newey_west(ic_array, hac_lag)
 
         return {
             "mean_ic": mean_ic,
@@ -224,6 +253,8 @@ def compute_rank_ic(
             "ic_ir": ic_ir,
             "t_stat": t_stat,
             "p_value": p_value,
+            "hac_t_stat": hac_t_stat,
+            "hac_p_value": hac_p_value,
             "num_periods": num_periods,
             "positive_ic_ratio": float(np.mean(ic_array > 0)),
             "ic_percentiles": {

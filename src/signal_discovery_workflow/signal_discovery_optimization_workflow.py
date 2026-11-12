@@ -162,7 +162,10 @@ def _format_workflow_result(
 
     metrics = {
         k: ic_results.get(k)
-        for k in ("mean_ic", "ic_std", "ic_ir", "t_stat", "p_value", "num_periods", "positive_ic_ratio")
+        for k in (
+            "mean_ic", "ic_std", "ic_ir", "t_stat", "p_value", "hac_t_stat", "hac_p_value",
+            "num_periods", "positive_ic_ratio", "avg_turnover", "net_spread",
+        )
         if ic_results.get(k) is not None
     }
 
@@ -184,6 +187,19 @@ def _format_workflow_result(
 
     if ic_results.get("error"):
         payload["error"] = ic_results["error"]
+
+    mean_ic = ic_results.get("mean_ic")
+    if mean_ic is not None:
+        payload["recommended_direction"] = 1 if mean_ic >= 0 else -1
+        if mean_ic < 0:
+            payload["direction_note"] = (
+                "Signal is inverse-predictive as coded; as-written it expects negative payoff "
+                "and would require a sign flip (e.g., short the top-ranked names) to be actionable."
+            )
+    if ic_results.get("cost_warning"):
+        payload["cost_warning"] = (
+            "Estimated net long-short spread after configured one-way transaction cost is non-positive."
+        )
 
     if last_feedback:
         payload["last_feedback"] = last_feedback
@@ -230,6 +246,16 @@ class SignalOptimizerConfig(FunctionBaseConfig, name="signal_optimizer"):
     num_signals: int = Field(default=5, description="Signals per iteration")
     forward_periods: int = Field(default=5, description="Forward return periods")
     save_results: bool = Field(default=True, description="Save results to disk")
+    # Local fork, opt-in (branch local/tier1-universes). Defaults preserve upstream behavior.
+    require_hac_pvalue: bool = Field(
+        default=False,
+        description="Also require Newey-West (HAC) p-value <= hac_pvalue_threshold for acceptance.",
+    )
+    hac_pvalue_threshold: float = Field(default=0.05, description="Maximum HAC p-value for acceptance")
+    cost_bps: float = Field(
+        default=0.0,
+        description="One-way transaction cost in bps. If > 0, annotate avg_turnover/net_spread/cost_warning in results.",
+    )
 
 
 @register_function(config_type=SignalOptimizerConfig, framework_wrappers=[LLMFrameworkEnum.LANGCHAIN])
@@ -276,7 +302,18 @@ async def signal_optimizer_function(config: SignalOptimizerConfig, builder: Buil
         with np.errstate(invalid="ignore", divide="ignore"), warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=RuntimeWarning)
             forward_returns = compute_forward_returns(close, periods=config.forward_periods)
-            ic_results = compute_rank_ic(signal_values, forward_returns)
+            ic_results = compute_rank_ic(signal_values, forward_returns, hac_lag=config.forward_periods)
+        if getattr(config, "cost_bps", 0.0) and getattr(config, "cost_bps", 0.0) > 0:
+            try:
+                from .signal_report import _decile_long_short
+
+                ls = _decile_long_short(signal_values, forward_returns, cost_bps=config.cost_bps)
+                if len(ls) >= 100:
+                    ic_results["avg_turnover"] = float(ls["turnover"].mean())
+                    ic_results["net_spread"] = float(ls["net_spread"].mean())
+                    ic_results["cost_warning"] = bool(ic_results["net_spread"] <= 0)
+            except Exception as e:
+                logger.warning(f"cost annotation skipped: {e}")
         ic_results["selected_signal"] = selected_signal
         return ic_results
 
@@ -287,6 +324,10 @@ async def signal_optimizer_function(config: SignalOptimizerConfig, builder: Buil
             return False
         if p_value is not None and p_value > config.p_value_threshold:
             return False
+        if getattr(config, "require_hac_pvalue", False):
+            hac_p = ic_results.get("hac_p_value")
+            if hac_p is None or hac_p > getattr(config, "hac_pvalue_threshold", 0.05):
+                return False
         return True
 
     async def generate_feedback(signal_json: str, ic_results: dict, iteration: int) -> str:
@@ -378,7 +419,9 @@ No prose, no preamble. Format:
                 last_error = str(ic_results["error"])
 
             if mean_ic is not None:
-                logger.info(f"Mean IC: {mean_ic:.4f}, p-value: {ic_results.get('p_value', 'N/A')}")
+                hac_p = ic_results.get("hac_p_value")
+                hac_str = f", HAC p: {hac_p:.4g}" if hac_p is not None else ""
+                logger.info(f"Mean IC: {mean_ic:.4f}, p-value: {ic_results.get('p_value', 'N/A')}{hac_str}")
                 if best_ic is None or abs(mean_ic) > abs(best_ic):
                     best_ic = mean_ic
                     best_result = {

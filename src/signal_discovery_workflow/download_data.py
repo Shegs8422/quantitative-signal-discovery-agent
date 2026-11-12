@@ -161,6 +161,17 @@ BOND_ETF_TICKERS = [
     'JNK',  # High yield (2006)
 ]
 
+# Broad global bond & credit ETF panel (P2.11): duration, credit, inflation,
+# intl hedged/unhedged aggregate, muni and linkers. ~30 names, all with history
+# dating to ~2007+. Note: hedged intl funds (BNDX, IAGG) carry no FX exposure
+# by construction; unhedged country panels DO (see --local-currency in signal_report).
+GLOBAL_BOND_ETF_TICKERS = [
+    'TLT', 'IEF', 'SHY', 'AGG', 'BND', 'GOVT', 'TIP', 'STIP', 'SCHP',
+    'LQD', 'VCIT', 'MBB', 'MUB', 'BIV', 'FLOT', 'SRLN', 'BKLN',
+    'HYG', 'JNK', 'HYLB', 'FALN', 'ANGL', 'HYDB',
+    'EMB', 'EMLC', 'CWB', 'IAGG', 'BNDX',
+]
+
 # Factor ETFs — momentum, quality, value, min-vol, size, blend styles.
 FACTOR_ETF_TICKERS = [
     'MTUM', # Momentum (2013)
@@ -182,7 +193,29 @@ UNIVERSES: dict[str, list[str]] = {
     "country_etfs": COUNTRY_ETF_TICKERS,
     "sector_etfs": SECTOR_ETF_TICKERS,
     "bond_etfs": BOND_ETF_TICKERS,
+    "global_bond_etfs": GLOBAL_BOND_ETF_TICKERS,
     "factor_etfs": FACTOR_ETF_TICKERS,
+}
+
+# FX pairs used to decompose country-ETF USD returns into local-currency and
+# FX components. Values are yfinance symbols; invert=True means the pair is
+# quoted as CCY per USD (multiply USD→CCY legs by 1/pair to get USD per CCY).
+FX_PAIRS: dict[str, dict] = {
+    "AUDUSD=X": {"fallbacks": ["AUD=X"], "invert": False},
+    "USDCAD=X": {"fallbacks": ["CAD=X"], "invert": True},
+    "USDSEK=X": {"fallbacks": ["SEK=X"], "invert": True},
+    "EURUSD=X": {"fallbacks": ["EUR=X"], "invert": False},
+    "USDHKD=X": {"fallbacks": ["HKD=X"], "invert": True},
+    "USDJPY=X": {"fallbacks": ["JPY=X"], "invert": True},
+    "USDCHF=X": {"fallbacks": ["CHF=X"], "invert": True},
+    "USDKRW=X": {"fallbacks": ["KRW=X"], "invert": True},
+    "USDBRL=X": {"fallbacks": ["BRL=X"], "invert": True},
+    "USDTWD=X": {"fallbacks": ["TWD=X"], "invert": True},
+    "USDTHB=X": {"fallbacks": ["THB=X"], "invert": True},
+    "USDINR=X": {"fallbacks": ["INR=X"], "invert": True},
+    "USDCNY=X": {"fallbacks": ["CNY=X"], "invert": True},
+    "USDPLN=X": {"fallbacks": ["PLN=X"], "invert": True},
+    "USDIDR=X": {"fallbacks": ["IDR=X"], "invert": True},
 }
 
 
@@ -264,6 +297,47 @@ def download_universe_data(
     return results
 
 
+def download_fx_pairs(
+    start: str = "2012-01-01",
+    end: str = "2025-12-31",
+    output_dir: str | Path | None = None,
+) -> dict[str, pd.DataFrame]:
+    """Download FX pair history for country-ETF FX attribution (USD per CCY or CCY per USD)."""
+    output_path = Path(output_dir) if output_dir else DATA_ROOT / "fx"
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    results: dict[str, pd.DataFrame] = {}
+    for symbol, meta in FX_PAIRS.items():
+        candidates = [symbol, *meta.get("fallbacks", [])]
+        saved = False
+        for candidate in candidates:
+            try:
+                raw = yf.download(candidate, start=start, end=end, auto_adjust=False, progress=False)
+                if raw is None or len(raw) == 0:
+                    continue
+                close = raw["Close"]
+                if isinstance(close, pd.DataFrame):
+                    close = close.iloc[:, 0]
+                series = close.dropna()
+                if series.empty:
+                    continue
+                series.index.name = "Date"
+                # Save under the canonical symbol name expected by signal_report.py
+                csv_path = output_path / f"{symbol}.csv"
+                series.to_frame(name="Close").to_csv(csv_path)
+                results[symbol] = series.to_frame(name="Close")
+                logger.info(f"Saved {csv_path.name} with shape {results[symbol].shape}")
+                saved = True
+                break
+            except Exception as e:
+                logger.warning(f"FX download failed for {candidate}: {e}")
+        if not saved:
+            logger.warning(f"No data for FX pair {symbol} (tried {', '.join(candidates)})")
+
+    logger.info(f"FX data saved to {output_path}")
+    return results
+
+
 def download_sp500_data(
     start: str = "2012-01-01",
     end: str = "2025-12-31",
@@ -300,9 +374,18 @@ def main():
         default=None,
         help="Output directory. Default: data/<universe>/ (data/sp500 for the default)",
     )
+    parser.add_argument(
+        "--download-fx",
+        action="store_true",
+        help="Download FX pairs for country-ETF local-currency attribution instead of an OHLCV universe "
+        "(default output: data/fx/). See signal_report.py --local-currency.",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+    if args.download_fx:
+        download_fx_pairs(start=args.start, end=args.end, output_dir=args.output)
+        return
     tickers = args.tickers.split(",") if args.tickers else None
     download_universe_data(
         universe=args.universe,

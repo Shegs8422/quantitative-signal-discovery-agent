@@ -340,32 +340,47 @@ quantitative-signal-discovery-agent/
 
 All runs: hosted Nemotron 3.5 Lightning via build.nvidia.com, CPU-only local evaluation, Windows. Full detail in `docs/EXPERIMENTS.md`.
 
-| Universe | Request | Status | |IC| | Note |
-|---|---|---|---|---|---|---|
-| bond_etfs | momentum | **accepted** | 0.0322 | First-iteration accept; reports to `signal_20261112_053559_iter1_report.md` |
-| sp500 | mean reversion | best_effort | 0.0167 | t=−6.3; nearest miss |
-| sp500 | momentum | best_effort | 0.0119 | baseline |
-| sp500 | volatility | best_effort | 0.0048 | weak |
+| Universe | Config | Request | Status | mean IC | HAC p |
+|---|---|---|---|---|---|
+| bond_etfs | upstream | momentum | **accepted** | −0.0322 | — |
+| bond_etfs | `config-optimization-hac.yml` | momentum | **accepted** (iter 2) | −0.0350 | **0.0025** |
+| sp500 | upstream | mean reversion | best_effort | −0.0167 | — |
+| sp500 | upstream | momentum | best_effort | −0.0119 | — |
+| sp500 | upstream | volatility | best_effort | −0.0048 | — |
 
-Key findings: identical `Div(TS_Return(Close, 20), TS_Std(Close, 20))` formula passed on bond ETFs and failed on mega-cap equities; every promising IC was negative-signed (inverse edge); Newey–West-adjusted reports show the bond and reversion signals remain significant (p = 0.009 / 2e-04), but cost-aware long-short spreads are negative as coded — `|IC|` acceptance is necessary, not sufficient. Operator-hallucination aliases were added in `llm_utils.OPERATOR_SYNONYMS` and `signal_report.py` adds HAC-adjusted IC, decile long-short economics, turnover cost drag and sub-period stability.
+The HAC run also caught iteration 1 (naive p = 0.031, HAC p = 0.203) that the upstream rule would have accepted — the stricter gate rejected it and accepted iteration 2 instead. Direction reporting and cost annotation both fire correctly on the result JSON (`recommended_direction: -1`, `cost_warning` at 52% turnover).
+
+Key findings: identical `Div(TS_Return(Close, 20), TS_Std(Close, 20))` formula passed on bond ETFs and failed on mega-cap equities; every promising IC is negative-signed (inverse edge); Newey–West-adjusted reports keep both "significant" signals significant (p = 0.009 / 2e-04), but cost-aware long-short spreads are negative as coded — `|IC|` acceptance is necessary, not sufficient. Operator-hallucination aliases were added in `llm_utils.OPERATOR_SYNONYMS` and `signal_report.py` adds HAC-adjusted IC, decile long-short economics, turnover cost drag, horizon ladder, regime splits, residualized (market-neutral) IC, and a trial registry.
 
 New toolkit on top of upstream:
 
 ```bash
-# Deep-validate any saved signal (HAC stats, cost-aware backtest, stability)
+# Deep-validate any saved signal (HAC stats, cost-aware backtest, stability, ladder, regimes)
 uv run python -m signal_discovery_workflow.signal_report src/signal_discovery_workflow/output/signal_xxx.json --data-dir src/signal_discovery_workflow/data/bond_etfs
+
+# International panels: FX attribution (re-executes the SAME code in local currency)
+uv run python -m signal_discovery_workflow.download_data --download-fx
+uv run python -m signal_discovery_workflow.signal_report output/signal_xxx.json --data-dir data/country_etfs --fx-data-dir data/fx --local-currency
+
+# Strict acceptance (HAC gate + cost annotation)
+uv run nat run --config_file configs/config-optimization-hac.yml --input "momentum signals"
 ```
+
+> **Phoenix profiler:** `uv sync --locked` will drop the profiler package (not in the lock). After any sync, reinstall it to keep LLM-level spans: `.venv\Scripts\python.exe -m pip install "nvidia-nat[profiler]"`. Token *costs* stay empty because Phoenix has no price table for `nvidia/nemotron-3.5-lightning-30b-a3b`.
 
 ## Local Fork Modifications
 
 This checkout carries additive-only changes on branch `local/tier1-universes`. Defaults are byte-identical to upstream; every new capability is opt-in.
 
-- `download_data.py`: added `--universe` presets (Nasdaq 100, Dow 30, country/sector/bond/factor ETFs) and `--tickers` for custom panels; new `download_universe_data()`; `download_sp500_data()` retained as a backwards-compatible wrapper.
-- `signal_evaluator.py`: `load_stock_data()` accepts an optional `data_dir` and honors the `SIGNAL_DATA_DIR` env var (default: upstream `data/sp500/`).
-- `llm_utils.py`: `OPERATOR_SYNONYMS` extended with near-miss hallucination aliases observed in real runs (e.g. `TS_Volatility→TS_Vol`, `TS_Kurtosis→TS_Kurt`, `EWM_Mean→EMA`). Zero exact matches changed.
-- `signal_report.py` (new): accuracy/backtest report for saved signals — daily Rank IC series, Newey-West HAC t/p, decile long-short spread with turnover and cost drag, sub-period stability, max drawdown. Pure offline computation; no workflow changes.
-- `.gitignore`: downloaded CSVs and `output/` artifacts ignored for all universes.
-- No changes to agents, prompts, operator catalogue, Rank IC math, thresholds, YAML configs, or NAT registration.
+- `download_data.py`: added `--universe` presets (Nasdaq 100, Dow 30, country/sector/bond/global-bond/factor ETFs) and `--tickers` for custom panels; new `download_universe_data()`; `download_fx_pairs()` + `--download-fx`; `download_sp500_data()` retained as a backwards-compatible wrapper.
+- `signal_evaluator.py`: `load_stock_data()` accepts an optional `data_dir` and honors the `SIGNAL_DATA_DIR` env var (default: upstream `data/sp500/`); `compute_rank_ic()` now also emits `hac_t_stat`/`hac_p_value` (backwards-compatible extra keys).
+- `signal_report.py` (new): accuracy/backtest report — daily Rank IC series, Newey-West HAC t/p, moving-block bootstrap CI, horizon ladder (1/5/10/21/63d), signal autocorrelation, regime splits (year + realized-vol tercile), market-beta-neutral residualized IC, decile long-short spread with turnover and 10 bps cost drag, sub-period stability, max drawdown, trial registry (`output/trials.jsonl`) with Bonferroni annotation, optional FX attribution via `--local-currency`. Pure offline computation.
+- `llm_utils.py`: `OPERATOR_SYNONYMS` extended with near-miss hallucination aliases observed in real runs (`TS_Volatility→TS_Vol`, `EWM_Mean→EMA`…). Zero upstream matches changed; approximations flagged in docs.
+- `signal_discovery_optimization_workflow.py`: opt-in `require_hac_pvalue` + `hac_pvalue_threshold`, `cost_bps` (annotates `avg_turnover`/`net_spread`/`cost_warning`), `recommended_direction` + `direction_note` in results. All default off/zero → upstream behavior preserved.
+- `configs/config-optimization-hac.yml` (new): upstream config + HAC gate + cost annotation on; separate Phoenix project `signal-discovery-workflow-hac`.
+- `tests/test_local_fork_extensions.py` (new): 10 tests for aliases, HAC stats, direction reporting, decile economics. Suite: 105/105 passing.
+- `.gitignore`: downloaded CSVs/artifacts ignored for all universes.
+- No changes to agents, prompts, operator catalogue, Rank IC math, upstream thresholds, default YAML config, or NAT registration.
 
 ## License
 

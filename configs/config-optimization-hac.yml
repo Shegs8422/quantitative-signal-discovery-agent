@@ -1,0 +1,58 @@
+# Local fork config (branch local/tier1-universes): same workflow as config-optimization.yml,
+# with opt-in stricter acceptance:
+#   - require_hac_pvalue: true   → Newey-West (HAC, lag = forward_periods) p must be <= threshold
+#   - cost_bps: 10               → every result is annotated with avg turnover / net long-short
+#                                  spread after 10 bps one-way cost; cost_warning fires if net <= 0
+# Default config-optimization.yml is unchanged (upstream behavior preserved).
+# Run `phoenix serve` in a separate terminal to view traces at localhost:6006.
+
+general:
+  telemetry:
+    tracing:
+      phoenix:
+        _type: phoenix
+        endpoint: http://localhost:6006/v1/traces
+        project: signal-discovery-workflow-hac
+
+llms:
+  signal_generator:
+    _type: nim
+    model_name: nvidia/nemotron-3.5-lightning-30b-a3b
+    base_url: "https://integrate.api.nvidia.com/v1/"
+    temperature: 0.8
+    max_tokens: 4000
+    chat_template_kwargs:
+      enable_thinking: false
+
+  code_generator:
+    _type: nim
+    model_name: nvidia/nemotron-3.5-lightning-30b-a3b
+    base_url: "https://integrate.api.nvidia.com/v1/"
+    temperature: 0.0
+    max_tokens: 3000
+    chat_template_kwargs:
+      enable_thinking: false
+
+  optimization_advisor:
+    _type: nim
+    model_name: nvidia/nemotron-3.5-lightning-30b-a3b
+    base_url: "https://integrate.api.nvidia.com/v1/"
+    temperature: 0.5
+    max_tokens: 2000
+    chat_template_kwargs:
+      enable_thinking: false
+
+workflow:
+  _type: signal_optimizer
+  signal_generator_llm: signal_generator
+  code_generator_llm: code_generator
+  optimization_advisor_llm: optimization_advisor
+  ic_threshold: 0.02
+  p_value_threshold: 0.05
+  max_iterations: 3
+  num_signals: 2
+  forward_periods: 5
+  save_results: true
+  require_hac_pvalue: true
+  hac_pvalue_threshold: 0.05
+  cost_bps: 10
