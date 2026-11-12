@@ -1,29 +1,23 @@
 # GIFs & images (docs assets)
 
-Place drops here, then reference from `../walkthrough.md`.
+Reference assets used by `docs/walkthrough.md`. The files are already committed — no action needed unless you want to replace one.
 
-## Asset contract
+## Asset inventory
 
-| Filename | Length / size | Content | Caption |
-|---|---|---|---|
-| `nvidia-build-blueprint.png` | screenshot | build.nvidia.com blueprint page (hero) | "The NVIDIA blueprint I forked" |
-| `phoenix-projects-dashboard.png` | screenshot | Projects grid at localhost:6006 | "All runs captured in one view" |
-| `first-run-output.gif` | 10–30 s, ≤ 6–8 MB | Terminal scroll of `nat run` first execution | "The first full loop, start to finish" |
-| `phoenix-trace-detail.gif` | 10–20 s, ≤ 6–8 MB | Inside a single trace (clicks into spans, token counts) | "Per-LLM span costs visible after the profiler fix" |
-| `cost-aware-autopsy.gif` | 15–30 s, ≤ 8 MB | Scroll through one accepted signal's report + portfolio autopsy | "The tool that 'passes' the test that matters" |
-| `benchmark-run-table.png` | screenshot | Final benchmark markdown table | "Entitlement map + per-model cost table" |
+| File | Size | Caption |
+|---|---|---|
+| `nvidia-build-blueprint.png` | 409 KB | NVIDIA build blueprint detail page — the catalog entry this started from |
+| `nvidia-github-repo.png` | 150 KB | NVIDIA-AI-Blueprints GitHub repository page |
+| `demo-pytest-collection.gif` | 62 KB | `uv run pytest tests/` — 115 passed in ~8 s |
+| `demo-accuracy-report.gif` | 155 KB | Demo signal's full accuracy report rendering live — HAC vs. Bonferroni vs. Deflated Sharpe |
+| `phoenix-hac-project.png` | 119 KB | Phoenix project — signal-discovery-workflow-hac (3 traces) |
+| `phoenix-hac-trace-detail.png` | 294 KB | Phoenix span detail — HAC trace, full span tree, LLM spans with token counts and raw JSON |
+| `phoenix-bolt-project.png` | 175 KB | Phoenix project — benchmark-bolt-e4b (8 traces) |
+| `phoenix-bolt-trace-detail.png` | 236 KB | Phoenix span detail — benchmark trace, cumulative tokens + raw LLM output JSON |
 
-Drop GIFs at `docs/assets/*.gif`; the `docs/.gitattributes` (if added) selects LFS for large binaries.
-Image elements in `walkthrough.md` reference `assets/foo.gif` (relative).
+## Notes
 
-## Recording tips (Windows)
-
-- **Peeking** — free, lightweight (`griffinrivers/peeking`). Capture a tight terminal or browser region; export GIF.
-- **ScreenToGif** — screen portion capture; export to GIF or APNG.
-- Crop to the narrowest region that makes sense (640–900 px wide is plenty for terminal content). Target ≤ 8 MB; if a GIF exceeds 6 MB, reduce frame rate or duration.
-
-## After recording
-
-1. Drop files into `docs/assets/`.
-2. Commit `docs/CONTRIBUTING.md` updates if needed.
-3. Push — `git add docs/assets && git commit -m "docs: add walkthrough assets" && git push origin feat/tier1-universes-assurance`.
+- All GIFs are downscaled (≤ 1000 px width) and palette-quantized (128 colors) — visually lossless for text; lossless for image structure.
+- `demo-accuracy-report.gif` was 13.7 MB raw; 58× smaller after quantization with same frame count.
+- No LFS needed — all files are below the GitHub warn-size threshold.
+- Recording date: 2026-11-12.

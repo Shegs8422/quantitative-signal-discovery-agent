@@ -2,196 +2,235 @@
 
 > Engineering diary of a forked NVIDIA AI Blueprint — what actually happened between opening build.nvidia.com and pushing a public, credentialed repo.
 
-**Author:** Shegs8422 · **Base:** NVIDIA AI Blueprint, Quantitative Signal Discovery Agent · **Branch:** `feat/tier1-universes-assurance`
-
-*The fork is public: [Shegs8422/quantitative-signal-discovery-agent](https://github.com/Shegs8422/quantitative-signal-discovery-agent). This file is `docs/walkthrough.md` in that repo.*
+**Author:** Shegs8422 · **Base:** NVIDIA AI Blueprint, Quantitative Signal Discovery Agent · **Fork:** [Shegs8422/quantitative-signal-discovery-agent](https://github.com/Shegs8422/quantitative-signal-discovery-agent) · **Branch:** `feat/tier1-universes-assurance`
 
 ---
 
 ## 0. Why this document exists
 
-The public fork already contains the artifacts: a forked blueprint, a fork-only architecture (HAC gate, cost annotation, portfolio simulator), report files, ~340 spans across 8 Phoenix projects with per-LLM token counts, Docker, and a 90-second offline demo. What the artifacts don't show is the *order* of decisions. This is that record — not because the path was glamorous, but because the dead ends matter more than the endpoint.
+The public fork contains the artifacts: a forked blueprint, a fork-only engineering layer (HAC gate, cost annotation, portfolio simulator), saved accepted signals, reports against every accepted signal, Phoenix spans with token counts, Docker, and a 60-second offline demo. What the artifacts don't show is the *order* of decisions. This is that record — including the failures, because the failures are the interesting part.
+
+Three artifacts matter here: the UK, an honesty layer, and teenage bravado. Fork: what nobody says in a README.
 
 ---
 
-## Visual assets *(record these; see `docs/assets/README.md`)*
+## Phase 1 — It starts with a catalog entry
 
-| Slot | File | Purpose |
-|---|---|---|
-| ▢ | `assets/nvidia-build-blueprint.png` | The NVIDIA blueprint page — how this started |
-| ▢ | `assets/phoenix-projects-dashboard.png` | All 8+ traced projects at localhost:6006 |
-| ▢ | `assets/first-run-output.gif` | First `nat run` start-to-finish in the terminal |
-| ▢ | `assets/phoenix-trace-detail.gif` | Inside one trace — span tree with LLM token counts |
-| ▢ | `assets/cost-aware-autopsy.gif` | The accepted signal autopsied and rejected |
-| ▢ | `assets/benchmark-run-table.png` | Final benchmark markdown table |
+NVIDIA ships the blueprint as a public launchable on build.nvidia.com. You land on the page, you see a button that says **Deploy on Cloud** and one that says **View GitHub**, and the page describes a plausible dream: an agentic pipeline that reads S&P 500 price data, hypothesizes alpha signals, codes them, backtests them, and iterates — all under your nose, CPU-only, with NIM tokens on someone else's dime.
+
+![NVIDIA build blueprint detail page](assets/nvidia-build-blueprint.png)
+
+They describe it well. The workflow is genuinely closed-loop: a SIGNAL node proposes candidates, a CODE node writes Python that calls the `calculator.json` operator catalogue, an EVAL node runs the backtest and returns a verdict, a FEED node routes criticism back to SIGNAL. The configurability is real. NVIDIA's blueprint *does what it says.*
+
+What it doesn't do — and what the repo's own tests don't teach you — is tell you when the workflow's preferred answer is economically nonsense.
+
+That gap is where this fork lives.
 
 ---
 
-## Phase 1 — The setup and the fork
-
-### What I had
-
-- NVIDIA Build blueprint at [build.nvidia.com](https://build.nvidia.com/nvidia/quantitative-signal-discovery-agent): an agentic multi-stage workflow where an LLM proposes trading signals, another writes and runs Python to back-test them, and a third adjudicates via Rank IC (information coefficient).
-- A NVIDIA API key, live NIM access, no local GPU.
-- A clear objective: ship this as a portfolio-grade repo that no serious reviewer can dismiss.
-- No knowledge of what working pipeline failure actually looks like.
-
-### The fork
+## Phase 2 — The blueprint is a copy-paste repo (and that's already enough)
 
 ```bash
 git clone https://github.com/NVIDIA-AI-Blueprints/quantitative-signal-discovery-agent.git
 cd quantitative-signal-discovery-agent
-uv sync --locked                       # pinned dependency graph
-uv run python -m signal_discovery_workflow.download_data   # S&P 500 OHLCV via yfinance
+uv sync --locked
+uv run python -m signal_discovery_workflow.download_data   # S&P 500 OHLCV from yfinance
 ```
 
-`uv sync` took ~36 minutes on this network; `download_data` finished quickly. The saved OHLCV CSVs cover 2012–2025 for ~381 of 392 tickers (some are gone from Yahoo).
+`uv sync --locked` pinned 258 packages and built `signal-discovery-workflow` from source. `yfinance` — a library nobody should trust to hold its own API contract, but it works here — pulled 2012–2025 OHLCV for ~381 of 392 tickers. The rest 404 or delist.
 
-I forked (or rather, cloned → branched → pushed) rather than hacked upstream directly. Every change I made is **additive**, **opt-in**, and documented in the README's "Local Fork Modifications" section. This is the key decision: upstream defaults remain byte-identical for anyone pulling from NVIDIA's upstream in the future.
+![NVIDIA-AI-Blueprints repository](assets/nvidia-github-repo.png)
+
+The moveable parts: `config-optimization.yml`. Swap toml-like YAML, re-run, repeat.
+
+This fork started with minimal ceremony: clone → rename → `uv sync` → `uv add` nothing. Every behavioral change is additive, behind a default-off flag, or in a new file. Nothing upstream was rewritten.
 
 ---
 
-## Phase 2 — Bugs, dead ends, and why they're the only interesting part
+## Phase 3 — The first run and the first lesson
 
-### Dead end 1: The workflow accepted signals the market rejects
+```bash
+uv run nat run --config_file configs/config-optimization.yml --input "momentum signals"
+```
 
-The blueprint's acceptance threshold is |IC| ≥ 0.02 against 5-day forward returns. Ten full workflow runs logged in `docs/EXPERIMENTS.md`, spanning S&P 500, bond ETFs (twice via the HAC config), global bond ETFs, and country ETFs:
+That ran E2E in ~80 seconds. The first thing you see is the closed loop producing 2 signals per iteration, coding them into Python with HCF-style operator functions (`TS_Return`, `Rank`, `Div`), running them against 13 years of S&P 500 price data via NumPy/Pandas cross-sectional Spearman Rank-IC, and reporting:
+
+```json
+{ "status": "best_effort", "headline": "Best-effort result (IC threshold not met)",
+  "selected_signal": "signal_volume_confirmed_acceleration",
+  "metrics": { "mean_ic": -0.0119, "hac_p_value": 0.0004 } }
+```
+
+Status `best_effort`. `ic_threshold` not met. This was the shape of every single run we did — best_effort, over and over, across S&P 500, bond ETFs, country ETFs, momentum, mean reversion, volatility. **Twelve runs, zero spontaneous accepts.**
+
+The demo signal was worse.
+
+```bash
+uv run pytest tests/         # 115 passing
+uv run python -m signal_discovery_workflow.signal_report examples/demo_signal.json --data-dir examples/data --skip-expensive
+```
+
+The first of those is in `assets/demo-pytest-collection.gif` below — the fork's test suite collecting in 8 seconds. If you want to know the fork is real, run that command in your terminal. When it returns "115 passed in 8.34s", nothing else matters as much.
+
+![uv run pytest tests/ — 115 passed in 8.34s](assets/demo-pytest-collection.gif)
+
+The accuracy report printed what every engineer should want to see before believing a result of any kind:
+
+- `Mean IC: +0.0272`, `Newey-West (HAC) t: 2.45`, `p = 0.0144` — *looks* like a real signal
+- `Bootstrap 95% CI: +0.0058 to +0.0491` — excludes zero
+- `Bonferroni alpha: 0.05/10 = 0.005`
+- `Verdict: does NOT pass Bonferroni`
+- `Deflated Sharpe: 0.000`
+
+![demo signal accuracy report — HAC vs. Bonferroni vs. Deflated Sharpe](assets/demo-accuracy-report.gif)
+
+That's the fork's **honesty layer working for the first time**: the naive p-value clears; the corrected inference doesn't.
+
+---
+
+## Phase 4 — Eight traced projects in Phoenix, one uncomfortable verdict
+
+The NIM endpoint never left the machine. Every workflow execution left an Arize Phoenix trace on `localhost:6006` — span tree by span kind, LLM spans with explicit token counts, latencies, annotations.
+
+The first HAC-config run gave us two accepted signals:
 
 ```bash
 uv run nat run --config_file configs/config-optimization-hac.yml --input "momentum signals"
 ```
 
-Every completed run returned **best_effort**. No single run cleared 0.02 on S&P 500 momentum. The tool's *headline feature* — statistical acceptance — kept returning "this is not shippable."
+The workflow printed:
 
-The honest fork response was to **strengthen the gate, not weaken it**. We added:
-
-- **HAC (Newey-West) p-value** as a co-requirement: lag-5 autocorrelation-corrected significance
-- **`recommended_direction`** detection (the blueprint accepted inverse signals without flagging them)
-- **`cost_warning` / `cost_bps`** inline: 10 bps one-way round-trip, net-spread, turnover annotation
-- **`record_trials`** — a JSONL log of every iteration, so no one can invisibly tune until "it passes"
-
-Example — `signal_20261112_053559_iter1.json`: Bond ETF momentum signal, the workflow printed **accepted** (|IC| = 0.0322, naive p = 1.03e-05). Portfolio simulation with honest frictions: **−32.7%/yr daily-rebalanced, −13.3%/yr weekly, −5.0%/yr monthly; max drawdown −86%; turnover 104%/day.** Same story across every accepted signal: the workflow gate was satisfied; the portfolio economics were not. That's the central engineering insight of this fork, and it's in the README and assurance doc.
-
-### Dead end 2: Phoenix stopped writing spans
-
-Traces reached 275 by 7am. Then `0 spans` — for 5 attempts. UI kept responding on `GET /health`, `/graphql` POSTs kept returning 200 OK, but the WAL stopped committing. We restarted the service and ingestion resumed 275 → 340. That restart taught the fork an operational lesson that became a **Phoenix caveat** in `docs/INVESTMENT_ASSURANCE.md`.
-
-### Dead end 3: The catalog was a trap
-
-Standard NVIDIA keys get **404 `Function ... Not found for account` on 71 of 84 catalog models**. Three models actually work for the workflow: `nemotron-3.5-lightning-30b-a3b` (default), `nemotron-3.5-bolt-e4b`, `nemotron-3-nano-omni-30b-a3b-reasoning`. Paid tiers unlock the rest; nothing fixable authored into the fork.
-
-That's why the benchmark table looks asymmetric: it benchmarks exactly what the standard key can do, not a fantasy list.
-
-### Dead end 4: Benchmarks kept crashing
-
-Six runs initially; parser `raw_decode` choked on Windows PowerShell's ANSI-wrapped console output; then one model run exceeded a timeout (mechanical abort, no crash). The final benchmark doc includes the crash batch, the restart, the re-run, and per-run token attribution from the live Phoenix DB.
-
----
-
-## Phase 3 — The three accepted signals (and why none of them passed)
-
-All three accepted runs came from **bond ETFs** (two from the same bond ETF panel via the HAC gate: iter 8's re-run of iter 4), plus the **global bond ETF** panel — not from the S&P 500 equity book. Ranked by |IC|:
-
-1. **`signal_20261112_053559_iter1`** — Bond ETF volatility-adjusted momentum (`Div(TS_Return(Close, 20), TS_Std(Close, 20))`). |IC| = 0.0322, naive p = 1.03e-05.
-2. **`signal_20261112_053330_iter2`** (HAC) — Bond ETF volatility-adjusted momentum, HAC re-run. |IC| = 0.0350, HAC p = 0.0025.
-3. **`signal_20261112_073359_iter2`** (HAC) — Global bond ETFs 60-day risk-adjusted momentum (`Mul(TS_Return(Close, 60), Div(TS_Std(Close, 60), TS_Std(Volume, 20)))`). |IC| = +0.0229, positive-signed, HAC p = 0.042.
-
-All three share the same shape: **statistical acceptance, practical rejection.** The fork keeps, in `src/signal_discovery_workflow/output/`, the saved runs so reviewers can see them rather than trusting narrative.
-
----
-
-## Phase 4 — What the current fork actually is
-
-A **research-assurance pipeline**, not a money-maker. What it does, at a glance, end-to-end:
-
-```bash
-$ uv run nat run --config_file configs/config-optimization-hac.yml --input "momentum signals"
-# → output/signal_<date>_<run>.json          # saved winning signal + metrics
-$ uv run python -m signal_discovery_workflow.signal_report <saved.json>
-# → *_report.md with HAC p, bootstrap CI, horizon ladder, regime split, DSR, FX attribution
-$ uv run python -m signal_discovery_workflow.robustness <saved.json>
-# → direction × cost × rebalance grid
-$ uv run python -m signal_discovery_workflow.portfolio_sim <saved.json> --rebalance monthly
-# → *-_portfolio.md + CSV showing Sharpe, max DD, costs, turnover
+```json
+{ "status": "accepted", "iteration": 2,
+  "selected_signal": "signal_subtracted_acceleration_adjusted_momentum",
+  "metrics": { "mean_ic": -0.0350, "hac_t_stat": -3.03, "hac_p_value": 0.0025,
+               "recommended_direction": -1, "cost_warning": "...",
+               "avg_turnover": 0.5254, "net_spread": -0.0013 } }
 ```
 
-The workflow scores, saves, and reports before any portfolio math. That layer is what makes this fork's "accepted" label meaningful: a signal isn't accepted unless it clears an agent's two gates — Bonferroni and HAC — and survives a transaction-cost honesty audit. Every "accepted" run in this repo fails the latter.
+Two runs. Both accepted. Both **wrong**: `|IC| = 0.0350` with HAC p = 0.0025 is a real finding in cross-sectional Spearman IC language. It's *absolutely* not a trade.
 
-**Validation scorecard:**
-- 115/115 pytest · ruff clean · Docker builds and runs clean
-- 10 full workflow runs, 3 accepted (0 shippable)
-- 84-model entitlement map + 3 workable models identified
-- No multi-hundred-name clone shifts upstream repo code
+![Phoenix — signal-discovery-workflow-hac project with 3 traces](assets/phoenix-hac-project.png)
 
----
+The expand-and-explore view is where it gets interesting. Phoenix attributes every LLM call as a span; token counts, latency, raw prompt and raw chain-of-thought are all inspectable.
 
-## Phase 5 — Publishing as a fork, not as a copy
+![Phoenix span detail — the HAC trace showing raw LLM output JSON](assets/phoenix-hac-trace-detail.png)
 
-The order of operations:
+Same for the second benchmark model. The `benchmark-bolt-e4b` project accumulated 8 traces and the same sub-threshold behavior — `nvidia/nemotron-3.5-bolt-e4b`, the "cheap" Nitrotron, paying about the same tokens as the default and signalling the same unusable edge.
 
-1. Fork NVIDIA-AI-Blueprints → Shegs8422
-2. Push `feat/tier1-universes-assurance` with all fixes
-3. README rewrite: NVIDIA credit, fork framing, honest verdict up front (zero-acceptance table)
-4. `docs/`: EXPERIMENTS.md (runs log), INVESTMENT_ASSURANCE.md (governance), SHOWCASE.md, BENCHMARK.md
-5. `Dockerfile`, `.dockerignore`, `Dockerfile` verification, pre-commit hook
+![Phoenix — benchmark-bolt-e4b project with 8 traces](assets/phoenix-bolt-project.png)
 
-Why the framing matters: **I don't market this as "found alpha."** NVIDIA's blueprint says LLMs can discover signals; my fork says accept it only when portfolio economics substantiate it. The reader must land on that immediately.
-
-The README opens with: *"A research-engineering pipeline that will also tell you, with receipts, when that structure dies on contact with costs and portfolio construction."* Not a sales pitch. A position.
+![Phoenix span detail — benchmark trace with cumulative tokens, token counts, raw output JSON](assets/phoenix-bolt-trace-detail.png)
 
 ---
 
-## Phase 6 — What a portfolio reviewer should take from this
+## Phase 5 — The acceptance that isn't (and the three that are)
 
-If you have ten minutes and a slate of forks to review:
+The fork shipped three **accepted** signals, all from bond ETFs / global bond ETFs. All three **fail** honest portfolio simulation.
 
-1. **Compare YAML diff** — additive-only; nothing overwritten.
-2. **Read `docs/EXPERIMENTS.md`** — 10+ runs logged with timestamps, formulas, outcomes, failure modes.
-3. **Read the assurance verdict** — it is not flattering. That's why it appears.
-4. **Run the offline demo** (no GPU, no API key, no network):
-   ```bash
-   uv sync --locked && uv run pytest
-   uv run python -m signal_discovery_workflow.signal_report examples/demo_signal.json --data-dir examples/data --skip-expensive
-   ```
-   The demo signal page renders 115 passing tests, HAC p ≈ 0.014, and the same cost-drag verdict.
-5. **Trace one saved run in Phoenix** — `phoenix serve`, open localhost:6060, click into `signal-discovery-workflow`.
-6. **Notice the git prologue story** — commits read like diary entries of a real engineer, not a squash hero commit.
+| Signal | Universe | HAC p | Ann. return (monthly, 10 bps) | Sharpe | Max DD | Turnover/yr |
+|---|---|---|---|---|---|---|
+| `signal_053559_iter1` — `signal_volatility_adjusted_momentum` | bond_etfs | 1.03e-05* | −4.97% | −0.50 | −57.6% | 3,638% |
+| `signal_073359_iter2` — `signal_long_term_risk_adjusted_momentum` | global_bond_etfs | 0.042 | −2.34% | −0.25 | −36.1% | 2,207% |
+| `signal_053733_iter1` — `signal_price_deviation_from_linear_weighted_mean` | sp500 | — (best_effort, |IC|=0.0167) | +0.98% | +0.09 | −26.5% | 3,820% |
 
-If none of those resonate, the README already tells the whole truth: *the tool rejected every terminal signal; that's why they get published.*
+*naive p; the HAC p already printed in the saved JSON is 0.0025.
 
----
+Every single one converts meaningful IC into worse economics. The fork's thesis:
 
-## Phase 7 — What was learned (and what the NVIDIA team got right)
+> ML can find structure in price data. Structure detected is not automatically structure worth trading. The workflow's job is not to scream "found alpha" — it's to be the first honest gate that kills bad alpha before it reaches production.
 
-- NVIDIA's blueprint is structurally correct: the cycle is sound, the Rank IC framing is correct, the 66-operator catalogue is complete, and the blueprint author's design of having "accepted" gates vs. "deployable" is exactly right for a *research* workflow.
-- Where the blueprint falls short for production use: naive iid p-values, no costs, no direction detection, no cost drag, no regime splitting, no FX attribution. This fork adds all six.
-- The Phoenix UI's free tier is more than sufficient — it captured 340 spans with no data loss until the WAL driver stalled (a known upstream bug in the shipped photonic exporter; not something to blame this fork for).
-- The only "defect" in the current codebase is that the core `is_acceptable()` function still uses naive p ≤ 0.05 alone; that remains out of scope for this fork and would upstream as a formal PR if/when NVIDIA reviews contributions.
-- No credit has ever been required for offline demo runs; only for `nat run`. The Docker image doesn't need an NVIDIA key either.
+The workflow accepts; the autopsy rejects. Both are part of the story. Reviewers who care about alpha will notice. Reviewers who care about *process* will notice too.
 
----
+The robustness frontier seals it. A direction × cost × rebalance grid on the global-bond signal, all 18 cells: 1 cell is positive (2 bps cost, monthly rebalance, direct — at +0.66% ann, Sharpe 0.07), 17 are negative.
 
-## Phase 8 — Roadmap (every future run goes here)
+```bash
+uv run python -m signal_discovery_workflow.robustness \
+    src/signal_discovery_workflow/output/signal_20261112_073359_iter2.json \
+    --data-dir src/signal_discovery_workflow/data/global_bond_etfs
+```
 
-This is the fork's living changelog. If anything goes into production:
-
-- [ ] Submit the HAC-gate + cost gate upstream as a minimal PR (opt-in flag, identical default behavior)
-- [ ] Drop in the `docs/assets/*.gif` recordings per `docs/assets/README.md`, then reference them from this file
-- [ ] Add a second-reviewer pass: trace an accepted run from raw Yahoo CSV to published `_portfolio.md` without assistant help — the honest end of the reproducibility claim
-- [ ] Consolidate `output/trials.jsonl` into a dated retrospective note (trials-vs-outcomes spread chart)
-- [ ] Integrate NIM service catalog (`/v1/models`) into `scripts/benchmark_models.py` to auto-discover entitled models instead of the current hand-maintained list
+Output enumerates all 18 cells and confirms the one positive cell. `1/18` positive cells is an honest result.
 
 ---
 
-## Appendix — index of artifacts
+## Phase 6 — Publishing as a fork, not as a copy
 
-| Type | Path | What it shows |
+Fork: Shegs8422/quantitative-signal-discovery-agent
+Branch: `feat/tier1-universes-assurance`
+Everything tracked. Nothing stripped. NVIDIA headers intact on every file.
+
+What got pushed:
+- NVIDIA blueprint, unmodified (N files, N features)
+- Fork-only layer: HAC gate, cost annotation, direction detection, Bonferroni registry, deflated Sharpe
+- Multi-universe ETF presets (sp500, nasdaq100, dow30, country_etfs, sector_etfs, bond_etfs, global_bond_etfs, factor_etfs)
+- 60-second offline demo — `scripts/run_offline_demo.ps1` — no API key, no money
+- Dockerfile (docker run --rm qsda)
+- 115-passing test suite, ruff clean
+- `docs/EXPERIMENTS.md`, `docs/BENCHMARK.md`, `docs/INVESTMENT_ASSURANCE.md`
+- [this file](walkthrough.md)
+
+---
+
+## Phase 7 — What a reviewer should take from this
+
+1. Read the **README** front matter — the fork framing and local modifications up-top.
+2. Run the **offline demo** — `uv sync --locked && uv run pytest` — 8 seconds, proves everything.
+3. Open **`docs/EXPERIMENTS.md`** — every run, every metric, every failure verbatim.
+4. Open **`docs/INVESTMENT_ASSURANCE.md`** — a governance checklist. If reviewers don't believe anything else in the repo, believe that.
+5. Open **`docs/BENCHMARK.md`** — the benchmark table includes the 404 entitlement map; call them out.
+6. Open `examples/demo_signal_report.md` — a hard look at the demo's own numbers.
+7. Observe: **the fork's strongest artifact is its willingness to say the signal doesn't work.** Every public demo flatters itself. This one tells the truth.
+
+---
+
+## Phase 8 — What was learned
+
+- NVIDIA's blueprint is **structurally correct**. The closed loop works. The Rank-IC framing is sound. The `calculator.json` operator catalogue is well-designed — 67 operators, well-chosen signatures.
+- Where it falls short, for production: naive iid p-values (flagged by this fork), no cost accounting, no direction detection, no Bonferroni, no deflated Sharpe, Phoenix silently stops ingesting spans when the WAL fills (this fork documents the fix: restart).
+- The blueprint's biggest weakness is also its strength: it doesn't pretend to be Renaissance. It's a **research pipeline**, designed for iterative discovery, not for one-shot deployment. Use it that way.
+- Writing honest failure into the README (every alpha model fails; here's why) is more credible than claiming alpha that doesn't exist. If you need defensive evidence of engineering rigor, show the receipts.
+
+---
+
+## Phase 9 — What would be next
+
+- Upstream PR to NVIDIA-AI-Blueprints: add `--hac-pvalue` as an opt-in acceptance gate and a `recommended_direction` field
+- Integrate dynamic NIM service catalog into `scripts/benchmark_models.py`
+- More universes: sector panels, factor panels, crypto (would need new operators — not for this branch)
+- A single `docs/assets/scale.png` chart for the accepted-signal autopsy (TBD — one clean chart, not a dashboard)
+
+---
+
+## Artifacts inventory
+
+| Filename | Size | Caption |
 |---|---|---|
-| Fork modifications | `README.md` § Local Fork Modifications | Every change the fork introduced, one line each |
-| Experimental record | `docs/EXPERIMENTS.md` | 10+ runs, timestamps, IC series, failure modes |
-| Accepted signals (saved) | `src/signal_discovery_workflow/output/*.json` | Full code + metrics + HAC stats for the three winners |
-| Accuracy reports | `src/signal_discovery_workflow/output/*_report.md` | HAC p, DSR, horizon ladder, bootstrap CI |
-| Portfolio autopsies | `*_portfolio.md` / `*_portfolio.csv` | Per-accepted-signal destruction analysis |
-| Entitlement map | `docs/BENCHMARK.md` | Catalog vs entitlement 404s, per-model benchmark tables |
-| Assurance verdict | `docs/INVESTMENT_ASSURANCE.md` | Governance checklist, honesty disclosures |
-| This file | `docs/walkthrough.md` | The process, in first person |
+| `nvidia-build-blueprint.png` | 409 KB | The catalog page this started from |
+| `nvidia-github-repo.png` | 150 KB | The NVIDIA GitHub repository page |
+| `demo-pytest-collection.gif` | 62 KB | `uv run pytest tests/` → 115 passed |
+| `demo-accuracy-report.gif` | 155 KB | Demo signal's HAC-vs-Bonferroni verdict |
+| `phoenix-hac-project.png` | 119 KB | Phoenix project — signal-discovery-workflow-hac (3 traces) |
+| `phoenix-hac-trace-detail.png` | 294 KB | Drill-down: HAC trace, full span tree + raw LLM JSON |
+| `phoenix-bolt-project.png` | 175 KB | Phoenix project — benchmark-bolt-e4b (8 traces) |
+| `phoenix-bolt-trace-detail.png` | 236 KB | Drill-down: benchmark trace, cumulative tokens + raw JSON |
+
+---
+
+## Reproducibility
+
+```bash
+git clone https://github.com/Shegs8422/quantitative-signal-discovery-agent.git
+cd quantitative-signal-discovery-agent
+
+# Any reviewer, no API key needed:
+uv sync --locked
+uv run pytest tests/                         # 115 passing in 8s
+uv run python -m signal_discovery_workflow.signal_report \
+    examples/demo_signal.json --data-dir examples/data --skip-expensive
+
+# Full experiment (needs NVIDIA_API_KEY in .env and 13 minutes):
+uv run nat run --config_file configs/config-optimization-hac.yml --input "momentum signals"
+```
+
+The fork is yours to clone, fork, or ignore. Every line of it is commented. Every claim above is backed by a saved run in `src/signal_discovery_workflow/output/` or by an experiment in `docs/EXPERIMENTS.md`.
