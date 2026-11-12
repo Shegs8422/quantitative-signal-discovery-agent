@@ -75,9 +75,12 @@ uv sync --locked
 .venv\Scripts\python.exe -m pip install "nvidia-nat[profiler]"   # LLM-level Phoenix spans
 uv run python -m signal_discovery_workflow.download_data --universe bond_etfs
 uv run phoenix serve                                            # http://localhost:6006
+# hosted NIM: nvidia/nemotron-3.5-lightning-30b-a3b — live, no local GPU required
 uv run nat run --config_file configs/config-optimization-hac.yml --input "momentum signals"
 uv run python -m signal_discovery_workflow.signal_report src/signal_discovery_workflow/output/signal_xxx.json --data-dir src/signal_discovery_workflow/data/bond_etfs
 ```
+
+> Standard build.nvidia.com keys can only call a subset of the 84-model catalog. The full entitlement map (13 working models, everything else 404s) measured on 2026-11-12 is in `docs/BENCHMARK.md` — the three usable reasoning models for this workflow are `nemotron-3.5-lightning-30b-a3b`, `nemotron-3.5-bolt-e4b`, and `nemotron-3-nano-omni-30b-a3b-reasoning`.
 
 Full upstream walkthrough (notebooks, CLI, Brev deployment) follows below under the original NVIDIA documentation.
 

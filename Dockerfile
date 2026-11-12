@@ -3,7 +3,8 @@
 # Build:  docker build -t qsda .
 # Run:    docker run --rm qsda            # offline demo: report + portfolio sim (no API key)
 # Tests:  docker run --rm qsda pytest     # pytest suite (115 tests)
-# Real workflow (needs key): docker run --rm -e NVIDIA_API_KEY=nvapi-... qsda nat run --config_file configs/config-optimization-hac.yml --input "momentum signals"
+# Real workflow (needs key): docker run --rm -e NVIDIA_API_KEY=<your-build.nvidia.com-key> qsda nat run --config_file configs/config-optimization-hac.yml --input "momentum signals"
+# (verified working model for standard builds: nvidia/nemotron-3.5-lightning-30b-a3b)
 
 FROM python:3.12-slim
 
