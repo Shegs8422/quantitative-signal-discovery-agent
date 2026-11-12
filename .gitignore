@@ -20,3 +20,4 @@ examples/__pycache__/
 
 # Local documentation (not for upstream)
 # docs/ deliberately tracked in this fork (public engineering notes)
+.benchmarks/
